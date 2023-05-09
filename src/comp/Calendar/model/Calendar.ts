@@ -1,31 +1,33 @@
 import { compareTime, formatDateString } from "./Utils";
 
-type CalendarType = 'year' | 'month' | 'week';
+export type CalendarType = 'year' | 'month' | 'week';
 
-interface CalendarOption {
+export interface CalendarOption {
     type? : CalendarType
     selectDate? : string
     selectYear? : string,
     selectMonth? : string
     range? : number[]
-    schedules? : Schedule[]
+    events? : Event[]
 }
 
-interface CalendarData {
+export interface CalendarData {
     type : CalendarType
     today : string
     selectDate? : string
     selectYear? : string,
     selectMonth? : string
     dateList : DateData[]
-    schedules? : Schedule[]
-    setSchedule : Function
-    getSchedule : Function
-    addSchedule : Function
-    deleteSchedule : Function
+    events? : Event[]
+    setEvent : Function
+    getEvent : Function
+    addEvent : Function
+    deleteEvent : Function
+    getDateEventMap : Function
+    getAllEvent : Function
 }
 
-interface DateData {
+export interface DateData {
     text? : string
     date? : string
     dayOfMonth? : string
@@ -34,61 +36,65 @@ interface DateData {
     year? : string
 }
 
-interface Schedule {
+export interface Event {
     id : string
     date : string
     time : string
     title : string
 }
 
-interface DateScheduleMap {
-    [key : string] : Schedule[];
+export interface DateEventMap {
+    [key : string] : Event[];
 }
 
 export function createCalendarData(calOption : CalendarOption) : CalendarData {
     
     calOption.selectDate = calOption.selectDate ?? formatDateString(new Date());
-    calOption.selectYear = calOption.selectYear ?? new Date().getFullYear().toString();
-    calOption.selectMonth = calOption.selectMonth ?? (new Date().getMonth() +1).toString().padStart(2,'0');
+    calOption.selectYear ||= new Date().getFullYear().toString();
+    calOption.selectMonth ||= (new Date().getMonth() +1).toString().padStart(2,'0');
     const calData : CalendarData = {
-        type : calOption.type ?? 'month',
+        type : calOption.type || 'month',
         today : formatDateString(new Date()),
         selectDate : calOption.selectDate,
         selectYear : calOption.selectYear,
         selectMonth : calOption.selectMonth,
         dateList : createDateList(calOption),
-        setSchedule : function(schedules : Schedule[]){
-            this.schedules = schedules;
+        setEvent : function(events : Event[]){
+            this.events = [...events];
 
-            const dateScheduleMap : DateScheduleMap = {};
+            const dateEventMap : DateEventMap = {};
             this.dateList.forEach((date)=>{
-                dateScheduleMap[date.date!] = schedules.filter((v)=>v.date===date.date).sort((a,b)=>compareTime(a.time,b.time));
+                dateEventMap[date.date!] = this.events!.filter((v)=>v.date===date.date).sort((a,b)=>compareTime(a.time,b.time));
             });
-            this.getSchedule = function(date:string){
-                return dateScheduleMap[date];
+
+            this.getDateEventMap = function(){
+                return dateEventMap;
             }
-            this.addSchedule = function(schedule : Schedule){
+            this.getEvent = function(date:string){
+                return dateEventMap[date];
+            }
+            this.addEvent = function(event : Event){
                 try {
-                    this.schedules?.push(schedule);
-                    if(dateScheduleMap[schedule.date]){
-                        const newSchedule = [...dateScheduleMap[schedule.date],schedule];
-                        dateScheduleMap[schedule.date] = newSchedule.sort((a,b)=>compareTime(a.time,b.time));
+                    this.events?.push(event);
+                    if(dateEventMap[event.date]){
+                        const newEvent = [...dateEventMap[event.date],event];
+                        dateEventMap[event.date] = newEvent.sort((a,b)=>compareTime(a.time,b.time));
                     } else {
-                        dateScheduleMap[schedule.date] = [schedule];
+                        dateEventMap[event.date] = [event];
                     }
                     return true;
                 } catch (error) {
                     return false;
                 }
             }
-            this.deleteSchedule = function(id : string){
+            this.deleteEvent = function(id : string){
                 try {
-                    const target = this.schedules?.find(v=>v.id ===id);
-                    const targetIdx = this.schedules?.findIndex(v=>v.id ===id);
+                    const target = this.events?.find(v=>v.id ===id);
+                    const targetIdx = this.events?.findIndex(v=>v.id ===id);
                     if(target){
-                        const idx = dateScheduleMap[target.date].findIndex(v=>v.id ===target.id);
-                        dateScheduleMap[target.date].splice(idx,1);
-                        this.schedules?.splice(targetIdx!,1);
+                        const idx = dateEventMap[target.date].findIndex(v=>v.id ===target.id);
+                        dateEventMap[target.date].splice(idx,1);
+                        this.events?.splice(targetIdx!,1);
                     } 
                     return true;
                 } catch (error) {
@@ -96,11 +102,13 @@ export function createCalendarData(calOption : CalendarOption) : CalendarData {
                 }
             }
         },
-        getSchedule : function(){},
-        addSchedule : function(){},
-        deleteSchedule : function(){}
+        getAllEvent : function(){return this.events},
+        getEvent : function(){},
+        addEvent : function(){},
+        deleteEvent : function(){},
+        getDateEventMap : function(){}
     };
-    calData.setSchedule(calOption.schedules ?? []);
+    calData.setEvent(calOption.events || []);
 
     return calData;
 }
@@ -140,16 +148,12 @@ function createYearDateList(calOption:CalendarOption){
 
 function createMonthDateList(calOption:CalendarOption){
     const dateList : DateData[] = [];
-
-    const range = calOption.range ?? [1,1];
-
     const selectDate = new Date(calOption.selectYear+"-"+calOption.selectMonth+"-"+'01');
     const startDate = new Date(selectDate.getTime());
-    startDate.setMonth(selectDate.getMonth()-range[0]);
+    startDate.setDate(-(selectDate.getDay()-1));
     
-    const endDate = new Date(selectDate.getTime());
-    endDate.setMonth(selectDate.getMonth()+range[1]+1);
-    endDate.setDate(0);
+    const endDate = new Date(startDate.getTime());
+    endDate.setDate(startDate.getDate() +41);
     
     for(let date = startDate; date.getTime() <= endDate.getTime(); date.setDate(date.getDate()+1)){
         const dateText = formatDateString(date);
@@ -170,7 +174,7 @@ function createMonthDateList(calOption:CalendarOption){
 function createWeekDateList(calOption:CalendarOption){
     const dateList : DateData[] = [];
 
-    const range = calOption.range ?? [1,1];
+    const range = calOption.range || [1,1];
 
     const selectDate = new Date(calOption.selectDate!);
     const startDate = new Date(selectDate.getTime());
